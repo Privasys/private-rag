@@ -7,10 +7,10 @@
 # per-container OID extensions in the RA-TLS certificate.
 
 # --- Build stage --------------------------------------------------------
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 

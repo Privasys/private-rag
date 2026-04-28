@@ -14,8 +14,9 @@ This repository currently contains the MCP tool schemas, a placeholder binary, a
 | --- | --- |
 | MCP tool schemas (`internal/mcp`) | done |
 | Reproducible OCI image build | done |
+| In-memory store + REST API (`internal/store`, `internal/server`) | done |
 | Container skeleton (Postgres + pgvector + small CPU embedding model) | not started |
-| Conversation + messages REST + MCP API | not started |
+| Conversation + messages MCP API | not started |
 | Mutual RA-TLS pinning by MRTD (vs ai-gpu and enclave-cloud) | not started |
 | Orchestrator wiring | not started |
 
@@ -48,7 +49,33 @@ This repository currently contains the MCP tool schemas, a placeholder binary, a
 go test ./internal/mcp
 ```
 
-The current tests assert the registry stays in sync with the typed Args / Result structs. They are not a substitute for integration tests, which land with the server.
+The current tests assert the registry stays in sync with the typed Args / Result structs, exercise the in-memory store (including cross-subject isolation), and round-trip every REST endpoint via httptest.
+
+## REST surface
+
+All paths are under `/api/v1` and require `Authorization: Bearer <jwt>`. The subject (`sub` claim) is the unit of ownership; cross-subject access returns `404 Not Found` to avoid leaking the existence of other users' rows.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/api/v1/conversations` | List the caller's conversations |
+| POST | `/api/v1/conversations` | Create a conversation |
+| GET | `/api/v1/conversations/{id}` | Get one conversation |
+| PATCH | `/api/v1/conversations/{id}` | Rename |
+| DELETE | `/api/v1/conversations/{id}` | Delete (cascades to messages) |
+| GET | `/api/v1/conversations/{id}/messages` | List messages |
+| POST | `/api/v1/conversations/{id}/messages` | Append a message |
+| PUT | `/api/v1/messages/{id}/feedback` | Upsert feedback (`good`/`bad` + optional comment) |
+| GET | `/api/v1/messages/{id}/feedback` | Get the caller's latest feedback |
+
+Health: `GET /healthz`, `GET /readyz` (no auth).
+
+## Run locally
+
+```
+go run ./cmd/private-rag --listen :8443 --insecure-no-verify
+```
+
+`--insecure-no-verify` extracts the `sub` claim WITHOUT validating the JWT signature. It is for development and integration tests only; production deployments must wire in a JWKS-backed verifier (the same pattern attestation-server uses) before exposing the listener.
 
 ## Build
 
