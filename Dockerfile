@@ -7,18 +7,22 @@
 # per-container OID extensions in the RA-TLS certificate.
 
 # --- Build stage --------------------------------------------------------
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
+# Version is stamped from a build arg so each tagged image carries
+# its own version string but the binary stays reproducible per arg.
+ARG VERSION=dev
+
 # -trimpath strips the local build path; -s -w drops debug + symbol tables.
 # Both are required for a reproducible binary.
 RUN CGO_ENABLED=0 go build \
         -trimpath \
-        -ldflags='-s -w' \
+        -ldflags="-s -w -X main.version=${VERSION}" \
         -o /private-rag \
         ./cmd/private-rag
 

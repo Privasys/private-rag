@@ -1,0 +1,41 @@
+# Local development stack for private-rag.
+#
+# Brings up Postgres + pgvector and the private-rag server with
+# a claims-only verifier (no signature check) so any HS256-or-
+# anything JWT with a `sub` claim is accepted. NEVER deploy this
+# compose file as-is.
+
+services:
+  rag-db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: rag
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - rag-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  private-rag:
+    build:
+      context: .
+      args:
+        VERSION: dev
+    depends_on:
+      rag-db:
+        condition: service_healthy
+    environment:
+      PRIVATE_RAG_LISTEN: ":8443"
+      PRIVATE_RAG_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      DATABASE_URL: "postgres://postgres:dev@rag-db:5432/rag?sslmode=disable"
+    command: ["--insecure-no-verify"]
+    ports:
+      - "127.0.0.1:8443:8443"
+
+volumes:
+  rag-db-data:

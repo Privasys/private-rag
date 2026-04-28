@@ -16,7 +16,9 @@ This repository currently contains the MCP tool schemas, a placeholder binary, a
 | Reproducible OCI image build | done |
 | In-memory store + REST API (`internal/store`, `internal/server`) | done |
 | MCP HTTP transport (catalog + per-tool POST, stub data plane) | done |
-| Container skeleton (Postgres + pgvector + small CPU embedding model) | not started |
+| Postgres-backed store (auto-migrates schema on startup) | done |
+| OIDC verifier (golang-jwt + JWKS via MicahParks/keyfunc) | done |
+| Deployment recipe for Enclave OS Virtual | done (see [docs/deploy.md](docs/deploy.md)) |
 | Real Tools implementation (pgvector + embeddings) | not started |
 | Mutual RA-TLS pinning by MRTD (vs ai-gpu and enclave-cloud) | not started |
 | Orchestrator wiring | not started |
@@ -87,10 +89,28 @@ The data plane (pgvector + embedding model) is not provisioned yet, so reads ret
 ## Run locally
 
 ```
+docker compose up
+```
+
+The compose file at the repo root brings up Postgres + pgvector and the server with `--insecure-no-verify` for development.
+
+Without Docker:
+
+```
 go run ./cmd/private-rag --listen :8443 --insecure-no-verify
 ```
 
-`--insecure-no-verify` extracts the `sub` claim WITHOUT validating the JWT signature. It is for development and integration tests only; production deployments must wire in a JWKS-backed verifier (the same pattern attestation-server uses) before exposing the listener.
+`--insecure-no-verify` extracts the `sub` claim WITHOUT validating the JWT signature; it is for development only.
+
+## Production configuration
+
+Production deployments must set both:
+
+- `--db-url` / `DATABASE_URL` - Postgres DSN (the schema is applied at startup)
+- `--oidc-issuer` / `OIDC_ISSUER` - one or more issuer URLs (comma-separated). Discovery is performed at start, JWKS is cached and refreshed on unknown KIDs by [MicahParks/keyfunc](https://github.com/MicahParks/keyfunc) running over [golang-jwt/jwt/v5](https://github.com/golang-jwt/jwt). We do not hand-roll JWT crypto.
+- `--oidc-audience` / `OIDC_AUDIENCE` - one or more accepted aud values (comma-separated)
+
+See [docs/deploy.md](docs/deploy.md) for a complete recipe (private-rag + colocated pgvector) targeting Enclave OS Virtual.
 
 ## Build
 
