@@ -3,10 +3,9 @@
 // Result structs declared in schema.go.
 //
 // This is intentionally schema-only: there is no MCP server in
-// this repo yet (Phase 7.3 Task 3). When the server lands, it
-// must register exactly the tool names listed in
-// PrivateRAGTools, with InputSchema generated from the matching
-// Args struct.
+// this repo yet. When the server lands, it must register exactly
+// the tool names listed in PrivateRAGTools, with InputSchema
+// generated from the matching Args struct.
 package mcp
 
 import "testing"

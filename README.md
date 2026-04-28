@@ -6,19 +6,18 @@ Per-fleet TDX enclave that hosts:
 - chunked text + embeddings (pgvector) of documents the user has added to their data room,
 - per-message feedback (good / bad / optional comment).
 
-This directory currently contains ONLY the MCP tool schemas (Phase 7.3 Task 2). The actual server is the next chunk of work (Phase 7.3 Task 3).
+This repository currently contains the MCP tool schemas, a placeholder binary, and a reproducible build pipeline. The server itself is not yet implemented.
 
 ## Status
 
-| Task | Status |
+| Component | Status |
 | --- | --- |
+| MCP tool schemas (`internal/mcp`) | done |
+| Reproducible OCI image build | done |
 | Container skeleton (Postgres + pgvector + small CPU embedding model) | not started |
-| MCP tool schemas (this directory) | done |
 | Conversation + messages REST + MCP API | not started |
 | Mutual RA-TLS pinning by MRTD (vs ai-gpu and enclave-cloud) | not started |
 | Orchestrator wiring | not started |
-
-See `.operations/plans/ai-plan.md` Section 7.3 for the full design.
 
 ## MCP surface
 
@@ -49,7 +48,7 @@ See `.operations/plans/ai-plan.md` Section 7.3 for the full design.
 go test ./internal/mcp
 ```
 
-The current tests assert the registry stays in sync with the typed Args / Result structs. They are not a substitute for integration tests (those land with Task 3).
+The current tests assert the registry stays in sync with the typed Args / Result structs. They are not a substitute for integration tests, which land with the server.
 
 ## Build
 

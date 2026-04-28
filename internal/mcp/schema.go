@@ -7,20 +7,18 @@
 //
 //   - the chat orchestrator (ai-gpu) consults when advertising
 //     tools to the LLM on every chat completion request;
-//   - the `private-rag` Go server (Phase 7.3 Task 3) implements
-//     against;
+//   - the `private-rag` Go server implements against;
 //   - integration tests use to assert request / response shape;
 //   - the developer portal renders to document the per-fleet
-//     RAG contract (Section 6.2 `privacy.mdx`).
+//     RAG contract.
 //
 // JSON-Schema compatibility: every Args / Result struct uses
 // `json` tags ONLY, no nested anonymous structs, so the schema
 // can be reflected to JSON Schema with a single pass at startup.
 //
-// Cross-component attestation is enforced at the RA-TLS layer
-// (Phase 7.3 Task 4); these schemas assume the caller has
-// already been pinned by MRTD and the JWT `sub` has been
-// extracted.
+// Cross-component attestation is enforced at the RA-TLS layer;
+// these schemas assume the caller has already been pinned by
+// MRTD and the JWT `sub` has been extracted.
 package mcp
 
 // Tool is the descriptor advertised to the LLM. Mirrors the

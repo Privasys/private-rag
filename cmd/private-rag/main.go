@@ -1,10 +1,10 @@
 // Package main is the entrypoint for the private-rag enclave server.
 //
 // At the moment this is a placeholder: the actual server (REST + MCP API
-// over RA-TLS, backed by Postgres + pgvector) is the next chunk of work
-// (see ai-plan.md Section 7.3 Task 3). The placeholder exists so that the
-// reproducible build pipeline (Dockerfile + .github/workflows/build.yml)
-// has something to compile and pin a digest for.
+// over RA-TLS, backed by Postgres + pgvector) is not yet implemented. The
+// placeholder exists so that the reproducible build pipeline (Dockerfile
+// + .github/workflows/build.yml) has something to compile and pin a digest
+// for.
 package main
 
 import (
@@ -25,6 +25,6 @@ func main() {
 		return
 	}
 
-	fmt.Fprintln(os.Stderr, "private-rag: server not yet implemented (see ai-plan.md Section 7.3 Task 3)")
+	fmt.Fprintln(os.Stderr, "private-rag: server not yet implemented")
 	os.Exit(1)
 }
