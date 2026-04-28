@@ -15,8 +15,9 @@ This repository currently contains the MCP tool schemas, a placeholder binary, a
 | MCP tool schemas (`internal/mcp`) | done |
 | Reproducible OCI image build | done |
 | In-memory store + REST API (`internal/store`, `internal/server`) | done |
+| MCP HTTP transport (catalog + per-tool POST, stub data plane) | done |
 | Container skeleton (Postgres + pgvector + small CPU embedding model) | not started |
-| Conversation + messages MCP API | not started |
+| Real Tools implementation (pgvector + embeddings) | not started |
 | Mutual RA-TLS pinning by MRTD (vs ai-gpu and enclave-cloud) | not started |
 | Orchestrator wiring | not started |
 
@@ -68,6 +69,20 @@ All paths are under `/api/v1` and require `Authorization: Bearer <jwt>`. The sub
 | GET | `/api/v1/messages/{id}/feedback` | Get the caller's latest feedback |
 
 Health: `GET /healthz`, `GET /readyz` (no auth).
+
+## MCP tool surface
+
+The orchestrator (ai-gpu) advertises this catalog to the model on every chat completion and forwards each tool call to a single POST. Same auth model as REST: `Authorization: Bearer <jwt>`, subject scoped.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/api/v1/mcp/tools` | Tool catalog with JSON-Schema input descriptors |
+| POST | `/api/v1/mcp/tools/search` | Semantic search over the caller's chunks |
+| POST | `/api/v1/mcp/tools/fetch_chunk` | Fetch the full body of a chunk by id |
+| POST | `/api/v1/mcp/tools/list_documents` | Enumerate the caller's indexed documents |
+| POST | `/api/v1/mcp/tools/add_to_data_room` | Add an enclave-cloud blob to the index |
+
+The data plane (pgvector + embedding model) is not provisioned yet, so reads return empty results (so the orchestrator can advertise the tools without confusing the model) and writes return `503 tool not provisioned`. Once the Postgres-backed `mcp.Tools` implementation lands, the HTTP layer does not change.
 
 ## Run locally
 

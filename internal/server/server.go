@@ -12,6 +12,11 @@
 //   PUT    /api/v1/messages/{id}/feedback         upsert feedback (good/bad/comment)
 //   GET    /api/v1/messages/{id}/feedback         get the user's latest feedback
 //
+// MCP tool surface (advertised to the model by the orchestrator):
+//
+//   GET    /api/v1/mcp/tools                      tool catalog with input schemas
+//   POST   /api/v1/mcp/tools/{tool}               invoke a tool with JSON args
+//
 // Health endpoints (no auth):
 //
 //   GET    /healthz                               liveness
@@ -33,6 +38,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/privasys/private-rag/internal/mcp"
 	"github.com/privasys/private-rag/internal/store"
 )
 
@@ -50,6 +56,10 @@ type Config struct {
 	// callers (typically the chat front-end). Empty disables
 	// CORS entirely.
 	CORSOrigins []string
+	// Tools backs the MCP tool surface. If nil, the server
+	// uses mcp.NotProvisioned so the catalog is still
+	// advertised but writes return 503.
+	Tools mcp.Tools
 }
 
 // New builds an http.Handler with all routes wired up.
@@ -59,6 +69,9 @@ func New(cfg Config) http.Handler {
 	}
 	if cfg.Verifier == nil {
 		panic("server: Verifier is required")
+	}
+	if cfg.Tools == nil {
+		cfg.Tools = mcp.NotProvisioned{}
 	}
 	mux := http.NewServeMux()
 
@@ -90,6 +103,10 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("POST /api/v1/conversations/{id}/messages", api.appendMessage)
 	mux.HandleFunc("PUT /api/v1/messages/{id}/feedback", api.upsertFeedback)
 	mux.HandleFunc("GET /api/v1/messages/{id}/feedback", api.getFeedback)
+
+	mcpH := &mcpHandlers{tools: cfg.Tools}
+	mux.HandleFunc("GET /api/v1/mcp/tools", mcpH.listTools)
+	mux.HandleFunc("POST /api/v1/mcp/tools/{tool}", mcpH.call)
 
 	var h http.Handler = mux
 	h = authMiddleware(h, cfg.Verifier)
