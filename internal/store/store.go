@@ -91,6 +91,13 @@ type Store interface {
 
 	AppendMessage(ctx context.Context, sub, conversationID string, role MessageRole, content string) (*Message, error)
 	ListMessages(ctx context.Context, sub, conversationID string) ([]Message, error)
+	// BranchFromMessage forks the conversation that owns messageID,
+	// creating a new Conversation and copying every message from
+	// the source up to AND INCLUDING the named message. New rows
+	// get fresh ids and a fresh CreatedAt; the original conversation
+	// is untouched. The new title defaults to the source title with
+	// a " (branch)" suffix when title is the empty string.
+	BranchFromMessage(ctx context.Context, sub, messageID, title string) (*Conversation, error)
 
 	UpsertFeedback(ctx context.Context, sub, messageID string, rating FeedbackRating, comment string) (*Feedback, error)
 	GetFeedback(ctx context.Context, sub, messageID string) (*Feedback, error)
@@ -284,5 +291,61 @@ func (s *InMemoryStore) GetFeedback(_ context.Context, sub, messageID string) (*
 		return nil, ErrNotFound
 	}
 	cp := *f
+	return &cp, nil
+}
+
+func (s *InMemoryStore) BranchFromMessage(_ context.Context, sub, messageID, title string) (*Conversation, error) {
+	if sub == "" {
+		return nil, ErrForbidden
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	convID, ok := s.messageIndex[messageID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	src, ok := s.conversations[convID]
+	if !ok || src.Sub != sub {
+		return nil, ErrNotFound
+	}
+	// Slice up to and including the named message, preserving order.
+	srcMsgs := s.messages[convID]
+	cut := -1
+	for i, m := range srcMsgs {
+		if m.ID == messageID {
+			cut = i
+			break
+		}
+	}
+	if cut < 0 {
+		return nil, ErrNotFound
+	}
+	now := s.now().UTC()
+	newTitle := title
+	if newTitle == "" {
+		newTitle = src.Title + " (branch)"
+	}
+	dst := &Conversation{
+		ID:        s.newID(),
+		Sub:       sub,
+		Title:     newTitle,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.conversations[dst.ID] = dst
+	copied := make([]*Message, 0, cut+1)
+	for _, m := range srcMsgs[:cut+1] {
+		nm := &Message{
+			ID:             s.newID(),
+			ConversationID: dst.ID,
+			Role:           m.Role,
+			Content:        m.Content,
+			CreatedAt:      now,
+		}
+		copied = append(copied, nm)
+		s.messageIndex[nm.ID] = dst.ID
+	}
+	s.messages[dst.ID] = copied
+	cp := *dst
 	return &cp, nil
 }

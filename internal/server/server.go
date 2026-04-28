@@ -101,6 +101,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/conversations/{id}", api.deleteConversation)
 	mux.HandleFunc("GET /api/v1/conversations/{id}/messages", api.listMessages)
 	mux.HandleFunc("POST /api/v1/conversations/{id}/messages", api.appendMessage)
+	mux.HandleFunc("POST /api/v1/messages/{id}/branch", api.branchFromMessage)
 	mux.HandleFunc("PUT /api/v1/messages/{id}/feedback", api.upsertFeedback)
 	mux.HandleFunc("GET /api/v1/messages/{id}/feedback", api.getFeedback)
 
@@ -314,6 +315,33 @@ func (a *apiHandlers) getFeedback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, f)
+}
+
+// branchFromMessage forks the conversation that owns the message in
+// the path. The caller may pass {"title": "..."} to override the
+// default "<source title> (branch)" name. The new conversation has
+// every message from the source up to AND INCLUDING the named one,
+// reassigned fresh ids so feedback rows on the source are NOT carried
+// over (per-branch ratings are independent).
+func (a *apiHandlers) branchFromMessage(w http.ResponseWriter, r *http.Request) {
+	sub, _ := subjectFromContext(r.Context())
+	var body struct {
+		Title string `json:"title"`
+	}
+	// Body is optional; ignore decode errors when the request has
+	// no body, but reject malformed JSON when one is present.
+	if r.ContentLength > 0 {
+		if err := decodeJSON(r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	c, err := a.store.BranchFromMessage(r.Context(), sub, r.PathValue("id"), body.Title)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, c)
 }
 
 // ---------------------------------------------------------------

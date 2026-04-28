@@ -260,6 +260,97 @@ func (s *PostgresStore) GetFeedback(ctx context.Context, sub, msgID string) (*Fe
 	return &f, nil
 }
 
+// BranchFromMessage forks the conversation that owns msgID. The new
+// conversation gets a fresh id; messages up to and including msgID
+// are copied with new ids and a single shared CreatedAt so they sort
+// stably under the new conversation. The whole copy runs in one tx
+// to avoid partial branches on failure. Feedback rows on the source
+// are NOT carried over (each branch has its own ratings).
+func (s *PostgresStore) BranchFromMessage(ctx context.Context, sub, msgID, title string) (*Conversation, error) {
+	if sub == "" {
+		return nil, ErrForbidden
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, mapPgErr(err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Resolve the source conversation through the message id while
+	// enforcing ownership in one round trip.
+	var srcConvID, srcTitle string
+	var srcCreated time.Time
+	if err := tx.QueryRow(ctx, `
+		SELECT c.id, c.title, m.created_at
+		FROM messages m JOIN conversations c ON c.id = m.conversation_id
+		WHERE m.id = $1 AND m.sub = $2 AND c.sub = $2
+	`, msgID, sub).Scan(&srcConvID, &srcTitle, &srcCreated); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, mapPgErr(err)
+	}
+
+	newTitle := title
+	if newTitle == "" {
+		newTitle = srcTitle + " (branch)"
+	}
+	now := time.Now().UTC()
+	dstID := uuid.NewString()
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO conversations (id, sub, title, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4)
+	`, dstID, sub, newTitle, now); err != nil {
+		return nil, mapPgErr(err)
+	}
+
+	// Copy messages whose created_at is <= the cut, ordered, with new
+	// ids minted on the Go side so we don't depend on a uuid-extension
+	// being present in the target Postgres. Two-step: read the source
+	// rows, then bulk-insert with fresh ids.
+	rows, err := tx.Query(ctx, `
+		SELECT role, content
+		FROM messages
+		WHERE conversation_id = $1 AND sub = $2 AND created_at <= $3
+		ORDER BY created_at ASC
+	`, srcConvID, sub, srcCreated)
+	if err != nil {
+		return nil, mapPgErr(err)
+	}
+	type row struct {
+		role, content string
+	}
+	var copied []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.role, &r.content); err != nil {
+			rows.Close()
+			return nil, mapPgErr(err)
+		}
+		copied = append(copied, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, mapPgErr(err)
+	}
+	for _, r := range copied {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO messages (id, conversation_id, sub, role, content, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, uuid.NewString(), dstID, sub, r.role, r.content, now); err != nil {
+			return nil, mapPgErr(err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, mapPgErr(err)
+	}
+	return &Conversation{
+		ID: dstID, Sub: sub, Title: newTitle,
+		CreatedAt: now, UpdatedAt: now,
+	}, nil
+}
+
 // mapPgErr converts known Postgres error codes into store sentinels.
 // Anything unrecognised is wrapped verbatim.
 func mapPgErr(err error) error {

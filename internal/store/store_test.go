@@ -156,3 +156,68 @@ func TestMessagesAndFeedback(t *testing.T) {
 		t.Fatalf("expected error for bad rating")
 	}
 }
+
+func TestBranchFromMessage(t *testing.T) {
+ctx := context.Background()
+s := newTestStore(t)
+
+c, _ := s.CreateConversation(ctx, "u", "root")
+m1, _ := s.AppendMessage(ctx, "u", c.ID, RoleUser, "q1")
+m2, _ := s.AppendMessage(ctx, "u", c.ID, RoleAssistant, "a1")
+m3, _ := s.AppendMessage(ctx, "u", c.ID, RoleUser, "q2")
+_, _ = s.AppendMessage(ctx, "u", c.ID, RoleAssistant, "a2")
+
+// Branch from m2: new conversation should contain m1 + m2 only.
+b, err := s.BranchFromMessage(ctx, "u", m2.ID, "")
+if err != nil {
+t.Fatalf("branch: %v", err)
+}
+if b.ID == c.ID {
+t.Fatalf("branch must mint new id")
+}
+if b.Title != "root (branch)" {
+t.Fatalf("default title = %q", b.Title)
+}
+bm, err := s.ListMessages(ctx, "u", b.ID)
+if err != nil || len(bm) != 2 {
+t.Fatalf("branch messages: %v len=%d", err, len(bm))
+}
+if bm[0].Content != "q1" || bm[1].Content != "a1" {
+t.Fatalf("wrong slice: %+v", bm)
+}
+if bm[0].ID == m1.ID || bm[1].ID == m2.ID {
+t.Fatalf("branch must reissue message ids")
+}
+
+// Source conversation untouched.
+src, _ := s.ListMessages(ctx, "u", c.ID)
+if len(src) != 4 {
+t.Fatalf("source mutated: len=%d", len(src))
+}
+
+// Branching from the last message includes everything.
+full, err := s.BranchFromMessage(ctx, "u", m3.ID, "fork-q2")
+if err != nil {
+t.Fatalf("branch full: %v", err)
+}
+if full.Title != "fork-q2" {
+t.Fatalf("title override: %q", full.Title)
+}
+fm, _ := s.ListMessages(ctx, "u", full.ID)
+if len(fm) != 3 {
+t.Fatalf("expected 3 messages, got %d", len(fm))
+}
+
+// Cross-tenant attempt hides the row.
+if _, err := s.BranchFromMessage(ctx, "intruder", m2.ID, ""); err != ErrNotFound {
+t.Fatalf("cross-tenant branch: %v", err)
+}
+// Empty subject rejected.
+if _, err := s.BranchFromMessage(ctx, "", m2.ID, ""); err != ErrForbidden {
+t.Fatalf("empty sub: %v", err)
+}
+// Unknown message is ErrNotFound.
+if _, err := s.BranchFromMessage(ctx, "u", "no-such-id", ""); err != ErrNotFound {
+t.Fatalf("unknown msg: %v", err)
+}
+}

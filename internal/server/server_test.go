@@ -225,3 +225,77 @@ func TestClaimsOnlyVerifierExtractsSub(t *testing.T) {
 		t.Fatalf("expected malformed error")
 	}
 }
+
+func TestBranchFromMessageRoute(t *testing.T) {
+h, _ := newTestServer(t, "u")
+
+// Seed a conversation with three messages.
+resp, body := do(t, h, "POST", "/api/v1/conversations", map[string]any{"title": "root"})
+if resp.StatusCode != http.StatusCreated {
+t.Fatalf("create status=%d body=%s", resp.StatusCode, body)
+}
+var c struct {
+ID string `json:"id"`
+}
+_ = json.Unmarshal(body, &c)
+
+mkMsg := func(role, content string) string {
+_, b := do(t, h, "POST", "/api/v1/conversations/"+c.ID+"/messages",
+map[string]any{"role": role, "content": content})
+var m struct{ ID string `json:"id"` }
+_ = json.Unmarshal(b, &m)
+return m.ID
+}
+_ = mkMsg("user", "q1")
+cut := mkMsg("assistant", "a1")
+_ = mkMsg("user", "q2")
+
+// Branch at the assistant turn with a custom title.
+resp, body = do(t, h, "POST", "/api/v1/messages/"+cut+"/branch",
+map[string]any{"title": "alt"})
+if resp.StatusCode != http.StatusCreated {
+t.Fatalf("branch status=%d body=%s", resp.StatusCode, body)
+}
+var b struct {
+ID    string `json:"id"`
+Title string `json:"title"`
+}
+_ = json.Unmarshal(body, &b)
+if b.ID == "" || b.ID == c.ID {
+t.Fatalf("branch id wrong: %q (root=%q)", b.ID, c.ID)
+}
+if b.Title != "alt" {
+t.Fatalf("title override: %q", b.Title)
+}
+
+// New conversation has the first two messages.
+resp, body = do(t, h, "GET", "/api/v1/conversations/"+b.ID+"/messages", nil)
+if resp.StatusCode != http.StatusOK {
+t.Fatalf("list branch status=%d", resp.StatusCode)
+}
+var lm struct {
+Messages []store.Message `json:"messages"`
+}
+_ = json.Unmarshal(body, &lm)
+if len(lm.Messages) != 2 || lm.Messages[0].Content != "q1" || lm.Messages[1].Content != "a1" {
+t.Fatalf("branch slice wrong: %+v", lm.Messages)
+}
+
+// Empty body still works (default title).
+resp, body = do(t, h, "POST", "/api/v1/messages/"+cut+"/branch", nil)
+if resp.StatusCode != http.StatusCreated {
+t.Fatalf("default-title branch status=%d body=%s", resp.StatusCode, body)
+}
+var b2 struct{ Title string `json:"title"` }
+_ = json.Unmarshal(body, &b2)
+if b2.Title != "root (branch)" {
+t.Fatalf("default title = %q", b2.Title)
+}
+
+// Cross-tenant request hides the message.
+other, _ := newTestServer(t, "intruder")
+resp, _ = do(t, other, "POST", "/api/v1/messages/"+cut+"/branch", nil)
+if resp.StatusCode != http.StatusNotFound {
+t.Fatalf("cross-tenant branch status=%d", resp.StatusCode)
+}
+}
