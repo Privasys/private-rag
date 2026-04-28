@@ -50,3 +50,11 @@ go test ./internal/mcp
 ```
 
 The current tests assert the registry stays in sync with the typed Args / Result structs. They are not a substitute for integration tests (those land with Task 3).
+
+## Build
+
+```
+docker build -t private-rag:dev .
+```
+
+The image is intentionally reproducible: same source tree -> same `@sha256:...` digest. Operators pin that digest in the Enclave OS Virtual workload manifest, and clients verify it via the per-container OID extensions in the RA-TLS certificate. CI builds and pushes `ghcr.io/privasys/private-rag:latest` on every merge to `main`.
